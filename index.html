@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AGILE Project Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <div class="header-content">
+                <h1>🚀 AGILE Project Manager</h1>
+                <div class="header-actions">
+                    <button id="exportBtn" class="btn btn-secondary">Export Data</button>
+                    <button id="importBtn" class="btn btn-secondary">Import Data</button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Navigation -->
+        <nav class="nav-tabs">
+            <button class="nav-tab active" data-tab="dashboard">Dashboard</button>
+            <button class="nav-tab" data-tab="backlog">Product Backlog</button>
+            <button class="nav-tab" data-tab="sprint">Sprint Board</button>
+            <button class="nav-tab" data-tab="kanban">Kanban</button>
+            <button class="nav-tab" data-tab="team">Team</button>
+            <button class="nav-tab" data-tab="reports">Reports</button>
+        </nav>
+
+        <!-- Main Content -->
+        <main class="main-content">
+            <!-- Dashboard Tab -->
+            <section id="dashboard" class="tab-content active">
+                <div class="dashboard-grid">
+                    <div class="card">
+                        <h2>Current Sprint</h2>
+                        <div id="currentSprintInfo">
+                            <p class="no-data">No active sprint</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>Sprint Progress</h2>
+                        <div id="sprintProgress">
+                            <div class="progress-bar">
+                                <div class="progress-fill" style="width: 0%"></div>
+                            </div>
+                            <p class="progress-text">0% Complete</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>Velocity</h2>
+                        <div id="velocityInfo">
+                            <p class="metric-value">0</p>
+                            <p class="metric-label">Story Points / Sprint</p>
+                        </div>
+                    </div>
+                    <div class="card">
+                        <h2>Team Capacity</h2>
+                        <div id="teamCapacity">
+                            <p class="metric-value" id="teamMemberCount">0</p>
+                            <p class="metric-label">Team Members</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card mt-20">
+                    <h2>Daily Standup</h2>
+                    <div id="standupSection">
+                        <div class="standup-form">
+                            <select id="standupMember" class="input">
+                                <option value="">Select team member...</option>
+                            </select>
+                            <textarea id="standupYesterday" class="input" placeholder="What did you do yesterday?"></textarea>
+                            <textarea id="standupToday" class="input" placeholder="What will you do today?"></textarea>
+                            <textarea id="standupBlockers" class="input" placeholder="Any blockers?"></textarea>
+                            <button id="addStandupBtn" class="btn btn-primary">Add Standup Update</button>
+                        </div>
+                        <div id="standupList" class="standup-list"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Product Backlog Tab -->
+            <section id="backlog" class="tab-content">
+                <div class="section-header">
+                    <h2>Product Backlog</h2>
+                    <button id="addStoryBtn" class="btn btn-primary">+ Add User Story</button>
+                </div>
+
+                <div class="backlog-controls">
+                    <input type="text" id="searchStories" class="input" placeholder="Search stories...">
+                    <select id="filterPriority" class="input">
+                        <option value="">All Priorities</option>
+                        <option value="high">High</option>
+                        <option value="medium">Medium</option>
+                        <option value="low">Low</option>
+                    </select>
+                    <select id="filterStatus" class="input">
+                        <option value="">All Statuses</option>
+                        <option value="backlog">Backlog</option>
+                        <option value="ready">Ready</option>
+                        <option value="in-progress">In Progress</option>
+                        <option value="review">Review</option>
+                        <option value="done">Done</option>
+                    </select>
+                </div>
+
+                <div id="backlogList" class="backlog-list"></div>
+            </section>
+
+            <!-- Sprint Board Tab -->
+            <section id="sprint" class="tab-content">
+                <div class="section-header">
+                    <h2>Sprint Management</h2>
+                    <button id="createSprintBtn" class="btn btn-primary">+ Create Sprint</button>
+                </div>
+
+                <div id="sprintsList" class="sprints-list"></div>
+
+                <div id="sprintPlanningSection" class="sprint-planning" style="display: none;">
+                    <h3>Sprint Planning</h3>
+                    <div class="planning-container">
+                        <div class="planning-column">
+                            <h4>Available Stories</h4>
+                            <div id="availableStories" class="story-pool"></div>
+                        </div>
+                        <div class="planning-column">
+                            <h4>Sprint Backlog</h4>
+                            <div id="sprintBacklog" class="story-pool"></div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Kanban Tab -->
+            <section id="kanban" class="tab-content">
+                <div class="section-header">
+                    <h2>Kanban Board</h2>
+                    <select id="kanbanSprintFilter" class="input">
+                        <option value="current">Current Sprint</option>
+                        <option value="all">All Stories</option>
+                    </select>
+                </div>
+
+                <div class="kanban-board">
+                    <div class="kanban-column" data-status="todo">
+                        <h3>To Do <span class="count" id="count-todo">0</span></h3>
+                        <div class="kanban-cards" id="kanban-todo"></div>
+                    </div>
+                    <div class="kanban-column" data-status="in-progress">
+                        <h3>In Progress <span class="count" id="count-in-progress">0</span></h3>
+                        <div class="kanban-cards" id="kanban-in-progress"></div>
+                    </div>
+                    <div class="kanban-column" data-status="review">
+                        <h3>Review <span class="count" id="count-review">0</span></h3>
+                        <div class="kanban-cards" id="kanban-review"></div>
+                    </div>
+                    <div class="kanban-column" data-status="done">
+                        <h3>Done <span class="count" id="count-done">0</span></h3>
+                        <div class="kanban-cards" id="kanban-done"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Team Tab -->
+            <section id="team" class="tab-content">
+                <div class="section-header">
+                    <h2>Team Management</h2>
+                    <button id="addTeamMemberBtn" class="btn btn-primary">+ Add Team Member</button>
+                </div>
+
+                <div id="teamList" class="team-list"></div>
+            </section>
+
+            <!-- Reports Tab -->
+            <section id="reports" class="tab-content">
+                <h2>Sprint Reports</h2>
+
+                <div class="card">
+                    <h3>Burndown Chart</h3>
+                    <select id="burndownSprintSelect" class="input mb-20">
+                        <option value="">Select a sprint...</option>
+                    </select>
+                    <canvas id="burndownChart"></canvas>
+                </div>
+
+                <div class="card mt-20">
+                    <h3>Velocity Chart</h3>
+                    <canvas id="velocityChart"></canvas>
+                </div>
+
+                <div class="card mt-20">
+                    <h3>Sprint Retrospective</h3>
+                    <select id="retroSprintSelect" class="input mb-20">
+                        <option value="">Select a sprint...</option>
+                    </select>
+                    <div id="retroSection">
+                        <textarea id="retroWentWell" class="input" placeholder="What went well?"></textarea>
+                        <textarea id="retroImprove" class="input" placeholder="What could be improved?"></textarea>
+                        <textarea id="retroActions" class="input" placeholder="Action items"></textarea>
+                        <button id="saveRetroBtn" class="btn btn-primary">Save Retrospective</button>
+                    </div>
+                    <div id="retroDisplay" style="display: none;"></div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modals -->
+    <!-- Add User Story Modal -->
+    <div id="storyModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="storyModalTitle">Add User Story</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="storyForm">
+                    <label>Title</label>
+                    <input type="text" id="storyTitle" class="input" required>
+
+                    <label>As a... (User Type)</label>
+                    <input type="text" id="storyUserType" class="input" placeholder="e.g., user, admin, customer">
+
+                    <label>I want to... (Goal)</label>
+                    <textarea id="storyGoal" class="input" required></textarea>
+
+                    <label>So that... (Benefit)</label>
+                    <textarea id="storyBenefit" class="input"></textarea>
+
+                    <label>Description</label>
+                    <textarea id="storyDescription" class="input"></textarea>
+
+                    <label>Acceptance Criteria</label>
+                    <textarea id="storyAcceptance" class="input" placeholder="One criterion per line"></textarea>
+
+                    <div class="form-row">
+                        <div class="form-col">
+                            <label>Story Points</label>
+                            <select id="storyPoints" class="input">
+                                <option value="1">1</option>
+                                <option value="2">2</option>
+                                <option value="3">3</option>
+                                <option value="5">5</option>
+                                <option value="8">8</option>
+                                <option value="13">13</option>
+                                <option value="21">21</option>
+                            </select>
+                        </div>
+                        <div class="form-col">
+                            <label>Priority</label>
+                            <select id="storyPriority" class="input">
+                                <option value="high">High</option>
+                                <option value="medium">Medium</option>
+                                <option value="low">Low</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <label>Assigned To</label>
+                    <select id="storyAssignee" class="input">
+                        <option value="">Unassigned</option>
+                    </select>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelStoryBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Save Story</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Add Team Member Modal -->
+    <div id="teamModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Add Team Member</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="teamForm">
+                    <label>Name</label>
+                    <input type="text" id="memberName" class="input" required>
+
+                    <label>Email</label>
+                    <input type="email" id="memberEmail" class="input" required>
+
+                    <label>Role</label>
+                    <select id="memberRole" class="input" required>
+                        <option value="product-owner">Product Owner</option>
+                        <option value="scrum-master">Scrum Master</option>
+                        <option value="developer">Developer</option>
+                        <option value="designer">Designer</option>
+                        <option value="qa">QA Engineer</option>
+                    </select>
+
+                    <label>Capacity (hours/sprint)</label>
+                    <input type="number" id="memberCapacity" class="input" value="40">
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelTeamBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Add Member</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Create Sprint Modal -->
+    <div id="sprintModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Create Sprint</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <form id="sprintForm">
+                    <label>Sprint Name</label>
+                    <input type="text" id="sprintName" class="input" required>
+
+                    <label>Sprint Goal</label>
+                    <textarea id="sprintGoal" class="input" required></textarea>
+
+                    <div class="form-row">
+                        <div class="form-col">
+                            <label>Start Date</label>
+                            <input type="date" id="sprintStart" class="input" required>
+                        </div>
+                        <div class="form-col">
+                            <label>End Date</label>
+                            <input type="date" id="sprintEnd" class="input" required>
+                        </div>
+                    </div>
+
+                    <label>Duration (weeks)</label>
+                    <select id="sprintDuration" class="input">
+                        <option value="1">1 week</option>
+                        <option value="2" selected>2 weeks</option>
+                        <option value="3">3 weeks</option>
+                        <option value="4">4 weeks</option>
+                    </select>
+
+                    <div class="modal-actions">
+                        <button type="button" class="btn btn-secondary" id="cancelSprintBtn">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Sprint</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="importInput" accept=".json" style="display: none;">
+
+    <script src="app.js"></script>
+</body>
+</html>
