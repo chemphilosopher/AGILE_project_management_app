@@ -1,4 +1,47 @@
 // AGILE Project Manager - Main Application
+
+// Status constants - single source of truth
+const STORY_STATUS = {
+    BACKLOG: 'backlog',
+    READY: 'ready',
+    IN_PROGRESS: 'in-progress',
+    REVIEW: 'review',
+    DONE: 'done'
+};
+
+const SPRINT_STATUS = {
+    PLANNED: 'planned',
+    ACTIVE: 'active',
+    COMPLETED: 'completed'
+};
+
+const PRIORITY = {
+    HIGH: 'high',
+    MEDIUM: 'medium',
+    LOW: 'low'
+};
+
+// Utility: Debounce function to limit frequent calls
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
+// Utility: Sanitize HTML to prevent XSS
+function sanitizeHtml(str) {
+    if (str === null || str === undefined) return '';
+    const div = document.createElement('div');
+    div.textContent = String(str);
+    return div.innerHTML;
+}
+
 class AgileProjectManager {
     constructor() {
         this.stories = [];
@@ -7,6 +50,11 @@ class AgileProjectManager {
         this.standups = [];
         this.currentEditingStory = null;
         this.currentEditingSprint = null;
+
+        // Indexed maps for O(1) lookups
+        this.storyMap = new Map();
+        this.sprintMap = new Map();
+        this.teamMemberMap = new Map();
 
         this.init();
     }
@@ -32,6 +80,33 @@ class AgileProjectManager {
             this.teamMembers = parsed.teamMembers || [];
             this.standups = parsed.standups || [];
         }
+        this.rebuildIndexes();
+    }
+
+    // Rebuild index maps for O(1) lookups
+    rebuildIndexes() {
+        this.storyMap.clear();
+        this.sprintMap.clear();
+        this.teamMemberMap.clear();
+
+        this.stories.forEach(story => this.storyMap.set(story.id, story));
+        this.sprints.forEach(sprint => this.sprintMap.set(sprint.id, sprint));
+        this.teamMembers.forEach(member => this.teamMemberMap.set(member.id, member));
+    }
+
+    // Get story by ID - O(1) lookup
+    getStoryById(id) {
+        return this.storyMap.get(id);
+    }
+
+    // Get sprint by ID - O(1) lookup
+    getSprintById(id) {
+        return this.sprintMap.get(id);
+    }
+
+    // Get team member by ID - O(1) lookup
+    getTeamMemberById(id) {
+        return this.teamMemberMap.get(id);
     }
 
     saveData() {
@@ -42,6 +117,7 @@ class AgileProjectManager {
             standups: this.standups
         };
         localStorage.setItem('agileProjectData', JSON.stringify(data));
+        this.rebuildIndexes();
     }
 
     // Event Listeners Setup
@@ -85,10 +161,52 @@ class AgileProjectManager {
         // Standup
         document.getElementById('addStandupBtn').addEventListener('click', () => this.addStandup());
 
-        // Backlog Filters
-        document.getElementById('searchStories').addEventListener('input', () => this.renderBacklog());
+        // Backlog Filters - with debounce for search input
+        document.getElementById('searchStories').addEventListener('input', debounce(() => this.renderBacklog(), 300));
         document.getElementById('filterPriority').addEventListener('change', () => this.renderBacklog());
         document.getElementById('filterStatus').addEventListener('change', () => this.renderBacklog());
+
+        // Event delegation for backlog list actions
+        document.getElementById('backlogList').addEventListener('click', (e) => {
+            const target = e.target;
+            const storyCard = target.closest('.story-card');
+            if (!storyCard) return;
+
+            const storyId = storyCard.dataset.storyId;
+
+            if (target.classList.contains('btn-edit-story')) {
+                const story = this.getStoryById(storyId);
+                if (story) this.openStoryModal(story);
+            } else if (target.classList.contains('btn-delete-story')) {
+                this.deleteStory(storyId);
+            }
+        });
+
+        // Event delegation for sprints list actions
+        document.getElementById('sprintsList').addEventListener('click', (e) => {
+            const target = e.target;
+            const sprintCard = target.closest('.sprint-card');
+            if (!sprintCard) return;
+
+            const sprintId = sprintCard.dataset.sprintId;
+
+            if (target.classList.contains('btn-start-sprint')) {
+                this.startSprint(sprintId);
+            } else if (target.classList.contains('btn-complete-sprint')) {
+                this.completeSprint(sprintId);
+            } else if (target.classList.contains('btn-delete-sprint')) {
+                this.deleteSprint(sprintId);
+            }
+        });
+
+        // Event delegation for team list actions
+        document.getElementById('teamList').addEventListener('click', (e) => {
+            const target = e.target;
+            if (target.classList.contains('btn-delete-member')) {
+                const memberId = target.dataset.memberId;
+                if (memberId) this.deleteTeamMember(memberId);
+            }
+        });
 
         // Kanban Filter
         document.getElementById('kanbanSprintFilter').addEventListener('change', () => this.renderKanban());
@@ -208,7 +326,7 @@ class AgileProjectManager {
             points: parseInt(document.getElementById('storyPoints').value),
             priority: document.getElementById('storyPriority').value,
             assignee: document.getElementById('storyAssignee').value,
-            status: this.currentEditingStory ? this.currentEditingStory.status : 'backlog',
+            status: this.currentEditingStory ? this.currentEditingStory.status : STORY_STATUS.BACKLOG,
             sprintId: this.currentEditingStory ? this.currentEditingStory.sprintId : null,
             createdAt: this.currentEditingStory ? this.currentEditingStory.createdAt : Date.now()
         };
@@ -238,10 +356,10 @@ class AgileProjectManager {
     }
 
     moveStoryToSprint(storyId, sprintId) {
-        const story = this.stories.find(s => s.id === storyId);
+        const story = this.getStoryById(storyId);
         if (story) {
             story.sprintId = sprintId;
-            story.status = 'ready';
+            story.status = STORY_STATUS.READY;
             this.saveData();
             this.renderSprints();
             this.renderBacklog();
@@ -249,7 +367,7 @@ class AgileProjectManager {
     }
 
     updateStoryStatus(storyId, newStatus) {
-        const story = this.stories.find(s => s.id === storyId);
+        const story = this.getStoryById(storyId);
         if (story) {
             story.status = newStatus;
             this.saveData();
@@ -268,7 +386,7 @@ class AgileProjectManager {
             goal: document.getElementById('sprintGoal').value,
             startDate: document.getElementById('sprintStart').value,
             endDate: document.getElementById('sprintEnd').value,
-            status: 'planned',
+            status: SPRINT_STATUS.PLANNED,
             retrospective: null
         };
 
@@ -282,12 +400,12 @@ class AgileProjectManager {
     startSprint(sprintId) {
         // End any currently active sprint
         this.sprints.forEach(s => {
-            if (s.status === 'active') s.status = 'completed';
+            if (s.status === SPRINT_STATUS.ACTIVE) s.status = SPRINT_STATUS.COMPLETED;
         });
 
-        const sprint = this.sprints.find(s => s.id === sprintId);
+        const sprint = this.getSprintById(sprintId);
         if (sprint) {
-            sprint.status = 'active';
+            sprint.status = SPRINT_STATUS.ACTIVE;
             this.saveData();
             this.renderSprints();
             this.renderDashboard();
@@ -295,15 +413,15 @@ class AgileProjectManager {
     }
 
     completeSprint(sprintId) {
-        const sprint = this.sprints.find(s => s.id === sprintId);
+        const sprint = this.getSprintById(sprintId);
         if (sprint) {
-            sprint.status = 'completed';
+            sprint.status = SPRINT_STATUS.COMPLETED;
 
             // Move incomplete stories back to backlog
             this.stories.forEach(story => {
-                if (story.sprintId === sprintId && story.status !== 'done') {
+                if (story.sprintId === sprintId && story.status !== STORY_STATUS.DONE) {
                     story.sprintId = null;
-                    story.status = 'backlog';
+                    story.status = STORY_STATUS.BACKLOG;
                 }
             });
 
@@ -319,7 +437,7 @@ class AgileProjectManager {
             this.stories.forEach(story => {
                 if (story.sprintId === sprintId) {
                     story.sprintId = null;
-                    story.status = 'backlog';
+                    story.status = STORY_STATUS.BACKLOG;
                 }
             });
 
@@ -420,20 +538,20 @@ class AgileProjectManager {
     // Render Functions
     renderDashboard() {
         // Current Sprint Info
-        const activeSprint = this.sprints.find(s => s.status === 'active');
+        const activeSprint = this.sprints.find(s => s.status === SPRINT_STATUS.ACTIVE);
         const currentSprintInfo = document.getElementById('currentSprintInfo');
 
         if (activeSprint) {
             const sprintStories = this.stories.filter(s => s.sprintId === activeSprint.id);
             const totalPoints = sprintStories.reduce((sum, s) => sum + s.points, 0);
-            const completedPoints = sprintStories.filter(s => s.status === 'done').reduce((sum, s) => sum + s.points, 0);
+            const completedPoints = sprintStories.filter(s => s.status === STORY_STATUS.DONE).reduce((sum, s) => sum + s.points, 0);
             const progress = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 0;
 
             const daysRemaining = Math.ceil((new Date(activeSprint.endDate) - new Date()) / (1000 * 60 * 60 * 24));
 
             currentSprintInfo.innerHTML = `
-                <h3>${activeSprint.name}</h3>
-                <p><strong>Goal:</strong> ${activeSprint.goal}</p>
+                <h3>${sanitizeHtml(activeSprint.name)}</h3>
+                <p><strong>Goal:</strong> ${sanitizeHtml(activeSprint.goal)}</p>
                 <p><strong>Duration:</strong> ${activeSprint.startDate} to ${activeSprint.endDate}</p>
                 <p><strong>Days Remaining:</strong> ${daysRemaining}</p>
                 <p><strong>Stories:</strong> ${sprintStories.length} (${totalPoints} points)</p>
@@ -449,11 +567,11 @@ class AgileProjectManager {
         }
 
         // Velocity
-        const completedSprints = this.sprints.filter(s => s.status === 'completed');
+        const completedSprints = this.sprints.filter(s => s.status === SPRINT_STATUS.COMPLETED);
         let avgVelocity = 0;
         if (completedSprints.length > 0) {
             const velocities = completedSprints.map(sprint => {
-                const sprintStories = this.stories.filter(s => s.sprintId === sprint.id && s.status === 'done');
+                const sprintStories = this.stories.filter(s => s.sprintId === sprint.id && s.status === STORY_STATUS.DONE);
                 return sprintStories.reduce((sum, s) => sum + s.points, 0);
             });
             avgVelocity = Math.round(velocities.reduce((a, b) => a + b, 0) / velocities.length);
@@ -470,7 +588,7 @@ class AgileProjectManager {
         const standupMemberSelect = document.getElementById('standupMember');
         standupMemberSelect.innerHTML = '<option value="">Select team member...</option>';
         this.teamMembers.forEach(member => {
-            standupMemberSelect.innerHTML += `<option value="${member.id}">${member.name}</option>`;
+            standupMemberSelect.innerHTML += `<option value="${member.id}">${sanitizeHtml(member.name)}</option>`;
         });
     }
 
@@ -484,14 +602,22 @@ class AgileProjectManager {
             return;
         }
 
-        standupList.innerHTML = todayStandups.map(standup => `
-            <div class="standup-item">
-                <div class="standup-header">${standup.memberName} - ${new Date(standup.date).toLocaleTimeString()}</div>
-                <div class="standup-section"><strong>Yesterday:</strong> ${standup.yesterday}</div>
-                <div class="standup-section"><strong>Today:</strong> ${standup.today}</div>
-                ${standup.blockers ? `<div class="standup-section"><strong>Blockers:</strong> ${standup.blockers}</div>` : ''}
-            </div>
-        `).join('');
+        standupList.innerHTML = todayStandups.map(standup => {
+            // Sanitize user content
+            const safeMemberName = sanitizeHtml(standup.memberName);
+            const safeYesterday = sanitizeHtml(standup.yesterday);
+            const safeToday = sanitizeHtml(standup.today);
+            const safeBlockers = sanitizeHtml(standup.blockers);
+
+            return `
+                <div class="standup-item">
+                    <div class="standup-header">${safeMemberName} - ${new Date(standup.date).toLocaleTimeString()}</div>
+                    <div class="standup-section"><strong>Yesterday:</strong> ${safeYesterday}</div>
+                    <div class="standup-section"><strong>Today:</strong> ${safeToday}</div>
+                    ${standup.blockers ? `<div class="standup-section"><strong>Blockers:</strong> ${safeBlockers}</div>` : ''}
+                </div>
+            `;
+        }).join('');
     }
 
     renderBacklog() {
@@ -526,13 +652,23 @@ class AgileProjectManager {
         }
 
         backlogList.innerHTML = filteredStories.map(story => {
-            const assignee = this.teamMembers.find(m => m.id === story.assignee);
-            const sprint = this.sprints.find(s => s.id === story.sprintId);
+            // Use O(1) lookups instead of .find()
+            const assignee = this.getTeamMemberById(story.assignee);
+            const sprint = this.getSprintById(story.sprintId);
+
+            // Sanitize user content to prevent XSS
+            const safeTitle = sanitizeHtml(story.title);
+            const safeDescription = sanitizeHtml(story.description);
+            const safeUserType = sanitizeHtml(story.userType);
+            const safeGoal = sanitizeHtml(story.goal);
+            const safeBenefit = sanitizeHtml(story.benefit);
+            const safeAssigneeName = assignee ? sanitizeHtml(assignee.name) : '';
+            const safeSprintName = sprint ? sanitizeHtml(sprint.name) : '';
 
             return `
                 <div class="story-card" data-story-id="${story.id}">
                     <div class="story-card-header">
-                        <div class="story-title">${story.title}</div>
+                        <div class="story-title">${safeTitle}</div>
                         <div class="story-badges">
                             <span class="badge badge-priority-${story.priority}">${story.priority.toUpperCase()}</span>
                             <span class="badge badge-points">${story.points} pts</span>
@@ -541,19 +677,19 @@ class AgileProjectManager {
                     </div>
                     ${story.userType && story.goal ? `
                         <div class="story-description">
-                            As a <strong>${story.userType}</strong>, I want to <strong>${story.goal}</strong>
-                            ${story.benefit ? ` so that <strong>${story.benefit}</strong>` : ''}
+                            As a <strong>${safeUserType}</strong>, I want to <strong>${safeGoal}</strong>
+                            ${story.benefit ? ` so that <strong>${safeBenefit}</strong>` : ''}
                         </div>
                     ` : ''}
-                    ${story.description ? `<div class="story-description">${story.description}</div>` : ''}
+                    ${story.description ? `<div class="story-description">${safeDescription}</div>` : ''}
                     <div class="story-meta">
-                        ${assignee ? `<span>👤 ${assignee.name}</span>` : '<span>👤 Unassigned</span>'}
-                        ${sprint ? `<span>🏃 ${sprint.name}</span>` : ''}
+                        ${assignee ? `<span>👤 ${safeAssigneeName}</span>` : '<span>👤 Unassigned</span>'}
+                        ${sprint ? `<span>🏃 ${safeSprintName}</span>` : ''}
                         <span>📅 Created ${new Date(story.createdAt).toLocaleDateString()}</span>
                     </div>
                     <div class="story-actions">
-                        <button class="btn btn-small btn-primary" onclick="app.openStoryModal(app.stories.find(s => s.id === '${story.id}'))">Edit</button>
-                        <button class="btn btn-small btn-danger" onclick="app.deleteStory('${story.id}')">Delete</button>
+                        <button class="btn btn-small btn-primary btn-edit-story">Edit</button>
+                        <button class="btn btn-small btn-danger btn-delete-story">Delete</button>
                     </div>
                 </div>
             `;
@@ -574,29 +710,33 @@ class AgileProjectManager {
         sprintsList.innerHTML = sortedSprints.map(sprint => {
             const sprintStories = this.stories.filter(s => s.sprintId === sprint.id);
             const totalPoints = sprintStories.reduce((sum, s) => sum + s.points, 0);
-            const completedPoints = sprintStories.filter(s => s.status === 'done').reduce((sum, s) => sum + s.points, 0);
+            const completedPoints = sprintStories.filter(s => s.status === STORY_STATUS.DONE).reduce((sum, s) => sum + s.points, 0);
             const progress = totalPoints > 0 ? Math.round((completedPoints / totalPoints) * 100) : 0;
 
+            // Sanitize user content
+            const safeName = sanitizeHtml(sprint.name);
+            const safeGoal = sanitizeHtml(sprint.goal);
+
             return `
-                <div class="sprint-card ${sprint.status === 'active' ? 'active' : ''}">
+                <div class="sprint-card ${sprint.status === SPRINT_STATUS.ACTIVE ? 'active' : ''}" data-sprint-id="${sprint.id}">
                     <div class="sprint-card-header">
                         <div class="sprint-info">
-                            <h3>${sprint.name} ${sprint.status === 'active' ? '🟢 ACTIVE' : sprint.status === 'completed' ? '✅ COMPLETED' : '📋 PLANNED'}</h3>
+                            <h3>${safeName} ${sprint.status === SPRINT_STATUS.ACTIVE ? '🟢 ACTIVE' : sprint.status === SPRINT_STATUS.COMPLETED ? '✅ COMPLETED' : '📋 PLANNED'}</h3>
                             <div class="sprint-dates">${sprint.startDate} to ${sprint.endDate}</div>
                         </div>
                         <div class="sprint-actions">
-                            ${sprint.status === 'planned' ? `
-                                <button class="btn btn-small btn-success" onclick="app.startSprint('${sprint.id}')">Start Sprint</button>
+                            ${sprint.status === SPRINT_STATUS.PLANNED ? `
+                                <button class="btn btn-small btn-success btn-start-sprint">Start Sprint</button>
                             ` : ''}
-                            ${sprint.status === 'active' ? `
-                                <button class="btn btn-small btn-primary" onclick="app.completeSprint('${sprint.id}')">Complete Sprint</button>
+                            ${sprint.status === SPRINT_STATUS.ACTIVE ? `
+                                <button class="btn btn-small btn-primary btn-complete-sprint">Complete Sprint</button>
                             ` : ''}
-                            ${sprint.status !== 'active' ? `
-                                <button class="btn btn-small btn-danger" onclick="app.deleteSprint('${sprint.id}')">Delete</button>
+                            ${sprint.status !== SPRINT_STATUS.ACTIVE ? `
+                                <button class="btn btn-small btn-danger btn-delete-sprint">Delete</button>
                             ` : ''}
                         </div>
                     </div>
-                    <div class="sprint-goal"><strong>Goal:</strong> ${sprint.goal}</div>
+                    <div class="sprint-goal"><strong>Goal:</strong> ${safeGoal}</div>
                     <div class="sprint-stats">
                         <div class="sprint-stat">
                             <div class="sprint-stat-value">${sprintStories.length}</div>
@@ -625,17 +765,18 @@ class AgileProjectManager {
         let stories;
 
         if (filter === 'current') {
-            const activeSprint = this.sprints.find(s => s.status === 'active');
+            const activeSprint = this.sprints.find(s => s.status === SPRINT_STATUS.ACTIVE);
             stories = activeSprint ? this.stories.filter(s => s.sprintId === activeSprint.id) : [];
         } else {
             stories = this.stories;
         }
 
+        // Use constants for status values
         const columns = {
-            'todo': stories.filter(s => s.status === 'ready' || s.status === 'backlog'),
-            'in-progress': stories.filter(s => s.status === 'in-progress'),
-            'review': stories.filter(s => s.status === 'review'),
-            'done': stories.filter(s => s.status === 'done')
+            'todo': stories.filter(s => s.status === STORY_STATUS.READY || s.status === STORY_STATUS.BACKLOG),
+            'in-progress': stories.filter(s => s.status === STORY_STATUS.IN_PROGRESS),
+            'review': stories.filter(s => s.status === STORY_STATUS.REVIEW),
+            'done': stories.filter(s => s.status === STORY_STATUS.DONE)
         };
 
         // Update counts
@@ -653,15 +794,19 @@ class AgileProjectManager {
             }
 
             container.innerHTML = columns[status].map(story => {
-                const assignee = this.teamMembers.find(m => m.id === story.assignee);
+                // Use O(1) lookup and sanitize content
+                const assignee = this.getTeamMemberById(story.assignee);
+                const safeTitle = sanitizeHtml(story.title);
+                const safeAssigneeName = assignee ? sanitizeHtml(assignee.name) : '';
+
                 return `
                     <div class="kanban-card" draggable="true" data-story-id="${story.id}">
-                        <div class="kanban-card-title">${story.title}</div>
+                        <div class="kanban-card-title">${safeTitle}</div>
                         <div class="kanban-card-meta">
                             <span class="badge badge-points">${story.points} pts</span>
                             <span class="badge badge-priority-${story.priority}">${story.priority}</span>
                         </div>
-                        ${assignee ? `<div class="kanban-card-meta">👤 ${assignee.name}</div>` : ''}
+                        ${assignee ? `<div class="kanban-card-meta">👤 ${safeAssigneeName}</div>` : ''}
                     </div>
                 `;
             }).join('');
@@ -706,12 +851,12 @@ class AgileProjectManager {
                 const storyId = e.dataTransfer.getData('storyId');
                 const newStatus = column.id.replace('kanban-', '');
 
-                // Map kanban columns to story statuses
+                // Map kanban columns to story statuses using constants
                 const statusMap = {
-                    'todo': 'ready',
-                    'in-progress': 'in-progress',
-                    'review': 'review',
-                    'done': 'done'
+                    'todo': STORY_STATUS.READY,
+                    'in-progress': STORY_STATUS.IN_PROGRESS,
+                    'review': STORY_STATUS.REVIEW,
+                    'done': STORY_STATUS.DONE
                 };
 
                 this.updateStoryStatus(storyId, statusMap[newStatus]);
@@ -729,19 +874,23 @@ class AgileProjectManager {
 
         teamList.innerHTML = this.teamMembers.map(member => {
             const assignedStories = this.stories.filter(s => s.assignee === member.id);
-            const activeStories = assignedStories.filter(s => s.status !== 'done');
+            const activeStories = assignedStories.filter(s => s.status !== STORY_STATUS.DONE);
+
+            // Sanitize user content
+            const safeName = sanitizeHtml(member.name);
+            const safeEmail = sanitizeHtml(member.email);
 
             return `
                 <div class="team-member-card">
                     <div class="team-member-header">
                         <div class="team-member-info">
-                            <h3>${member.name}</h3>
+                            <h3>${safeName}</h3>
                             <div class="team-member-role">${this.formatRole(member.role)}</div>
                         </div>
-                        <button class="btn btn-small btn-danger" onclick="app.deleteTeamMember('${member.id}')">Remove</button>
+                        <button class="btn btn-small btn-danger btn-delete-member" data-member-id="${member.id}">Remove</button>
                     </div>
                     <div class="team-member-details">
-                        <div>📧 ${member.email}</div>
+                        <div>📧 ${safeEmail}</div>
                         <div>⏱️ ${member.capacity}h capacity/sprint</div>
                         <div>📊 ${activeStories.length} active stories (${assignedStories.length} total)</div>
                     </div>
@@ -767,8 +916,8 @@ class AgileProjectManager {
         const retroSelect = document.getElementById('retroSprintSelect');
 
         const sprintOptions = this.sprints
-            .filter(s => s.status !== 'planned')
-            .map(s => `<option value="${s.id}">${s.name}</option>`)
+            .filter(s => s.status !== SPRINT_STATUS.PLANNED)
+            .map(s => `<option value="${s.id}">${sanitizeHtml(s.name)}</option>`)
             .join('');
 
         burndownSelect.innerHTML = '<option value="">Select a sprint...</option>' + sprintOptions;
@@ -837,7 +986,7 @@ class AgileProjectManager {
     }
 
     renderVelocityChart() {
-        const completedSprints = this.sprints.filter(s => s.status === 'completed').slice(-5);
+        const completedSprints = this.sprints.filter(s => s.status === SPRINT_STATUS.COMPLETED).slice(-5);
 
         if (completedSprints.length === 0) return;
 
@@ -850,7 +999,7 @@ class AgileProjectManager {
         ctx.clearRect(0, 0, canvas.width, canvas.height);
 
         const velocities = completedSprints.map(sprint => {
-            const sprintStories = this.stories.filter(s => s.sprintId === sprint.id && s.status === 'done');
+            const sprintStories = this.stories.filter(s => s.sprintId === sprint.id && s.status === STORY_STATUS.DONE);
             return {
                 name: sprint.name,
                 points: sprintStories.reduce((sum, s) => sum + s.points, 0)
