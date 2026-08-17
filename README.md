@@ -327,6 +327,10 @@ This is an open-source project. Contributions are welcome!
 
 ## Resources
 
+**Teaching or learning with this app?** See [COURSE_OUTLINE.md](COURSE_OUTLINE.md) — an
+8-module AGILE project management curriculum with hands-on labs, a multi-sprint capstone,
+and instructor notes, all built around this application.
+
 Learn more about AGILE:
 - [Agile Manifesto](https://agilemanifesto.org/)
 - [Scrum Guide](https://scrumguides.org/)
